@@ -4,7 +4,7 @@ namespace TerrariZ;
 class Server {
     private string $serverPassword;
 
-    public function __construct(string $serverPassword = "test") {
+    public function __construct(string $serverPassword = "abc") {
         $this->serverPassword = $serverPassword;
     }
 
@@ -24,31 +24,51 @@ if (!$serverSocket) {
             if ($clientSocket) {
                 $packet = $this->readPacket($clientSocket);
                 if ($packet) {
+					echo "Checking for packet ID: " . $packet['id'] . PHP_EOL;
                     switch ($packet['id']) {
+						
+
                         case 1:
                             echo "Received packet ID 1\n";
                             usleep(100000);
                             echo "Sending Password Packet (ID 37) to client\n";
                             $this->writePacket($clientSocket, 37, chr(1));
-                            break;
+                            
                         case 38:
+						if (!is_resource($clientSocket)) {
+    echo "Client socket is invalid or disconnected!\n";
+    return;
+}
+
                             echo "Received Password\n";
-							if (!$password === $this->readPacket($clientSocket)){
-								$this->writePacket($clientSocket, 2, chr(1));
-								echo 'Invalid Password';
-								
-							}
-							else {
-								echo 'Correct Password';
-							}
-							
-                            break;
+							$receivedPacket = $this->readPacket($clientSocket);
+if (!$receivedPacket) {
+    echo "Failed to read packet 38\n";
+    return;
+}
+var_dump($receivedPacket);
+$receivedPassword = ltrim($receivedPacket['data'], "\x03");
+
+$expectedPassword = $this->getServerPassword(); // Get stored password
+var_dump(bin2hex($receivedPassword), bin2hex($expectedPassword));
+
+
+if ($receivedPassword !== $expectedPassword) {
+    $this->writePacket($clientSocket, 2, chr(1)); // Invalid password response
+    echo 'Invalid Password \n';
+} else {
+    echo 'Correct Password \n';
+	 echo 'sending Continue connecting Packet: 3 \n';
+// send player packet for 3 and then also player appearance packet
+}
+
+
                     }
                 }
             }
         }
     }
-
+	
     public function kickPlayer($clientSocket) {
         socket_close($clientSocket);
     }
@@ -69,19 +89,28 @@ if (!$serverSocket) {
         return true;
     }
 
-    private function readPacket($client) {
-        $lengthBytes = fread($client, 2);
-        if (!$lengthBytes) return null;
-
-        $length = unpack('v', $lengthBytes)[1];
-        $packet = fread($client, $length);
-        if (!$packet) return null;
-
-        return [
-            'id' => ord($packet[0]),
-            'data' => substr($packet, 1)
-        ];
+private function readPacket($client) {
+    $lengthBytes = fread($client, 2);
+    if (!$lengthBytes) {
+        echo "No data received from client!\n";
+        return null;
     }
+
+    $length = unpack('v', $lengthBytes)[1];
+    $packet = fread($client, $length);
+
+    if (!$packet) {
+        echo "Packet read failed!\n";
+        return null;
+    }
+
+    var_dump($packet);
+
+    return [
+        'id' => ord($packet[0]),
+        'data' => substr($packet, 1)
+    ];
+}
 
     private function writePacket($client, int $packetId, string $payload = '') {
 		/*
