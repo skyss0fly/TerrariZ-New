@@ -1,176 +1,229 @@
 <?php
 namespace TerrariZ;
+error_reporting(E_ALL);
+ini_set("display_errors", 1);
 
-class Server {
+use TerrariZ\Internal\Packet;
+use TerrariZ\Player;
+
+class Server
+{
     private string $serverPassword;
+    private array $players = []; // Stores Player instances by UID
 
-    public function __construct(string $serverPassword = "abc") {
+    function __construct(string $serverPassword = "abc")
+    {
         $this->serverPassword = $serverPassword;
     }
 
-    public function run() {
-       $serverSocket = stream_socket_server("tcp://0.0.0.0:7777", $errno, $errstr);
-if (!$serverSocket) {
-    die("Stream socket creation failed: $errstr ($errno)");
-}
+    public function run()
+    {
+        $serverSocket = stream_socket_server(
+            "tcp://0.0.0.0:7777",
+            $errno,
+            $errstr
+        );
 
-       
-      
+        if (!$serverSocket) {
+            die("Stream socket creation failed: $errstr ($errno)");
+        }
 
         echo "Terraria Server Online\n";
 
         while (true) {
             $clientSocket = stream_socket_accept($serverSocket);
             if ($clientSocket) {
-                $packet = $this->readPacket($clientSocket);
-                if ($packet) {
-					echo "Checking for packet ID: " . $packet['id'] . PHP_EOL;
-                    switch ($packet['id']) {
-						
+                $packet = Packet::readPacket($clientSocket);
+                if (!$packet) {
+                    echo "No packet received, waiting...\n";
+                    usleep(50000); // Short delay to prevent CPU overload
+                    continue;
+                } else {
+                    echo "Checking for packet ID: " . $packet["id"] . PHP_EOL;
 
+                    switch ($packet["id"]) {
                         case 1:
                             echo "Received packet ID 1\n";
                             usleep(100000);
                             echo "Sending Password Packet (ID 37) to client\n";
-                            $this->writePacket($clientSocket, 37, chr(1));
-                            
+                            Packet::writePacket($clientSocket, 37, chr(1));
+
                         case 38:
-						if (!is_resource($clientSocket)) {
-    echo "Client socket is invalid or disconnected!\n";
-    return;
-}
+                            if (!is_resource($clientSocket)) {
+                                echo "Client socket is invalid or disconnected!\n";
+                                return;
+                            }
 
+                            $receivedPacket = Packet::readPacket($clientSocket);
                             echo "Received Password\n";
-							$receivedPacket = $this->readPacket($clientSocket);
-if (!$receivedPacket) {
-    echo "Failed to read packet 38\n";
-    return;
-}
-var_dump($receivedPacket);
-$receivedPassword = ltrim($receivedPacket['data'], "\x03");
+                            if (!$receivedPacket) {
+                                echo "Failed to read packet 38\n";
+                                return;
+                            }
 
-$expectedPassword = $this->getServerPassword(); // Get stored password
-var_dump(bin2hex($receivedPassword), bin2hex($expectedPassword));
+                            $receivedPassword = ltrim(
+                                $receivedPacket["data"],
+                                "\x03"
+                            );
+                            $expectedPassword = $this->getServerPassword();
 
+                            if ($receivedPassword !== $expectedPassword) {
+                                Packet::writePacket($clientSocket, 2, chr(1));
+                                echo "Invalid Password \n";
+                            } else {
+                                echo "Correct Password \n";
+                                Packet::writePacket($clientSocket, 3, 0);
+                            }
 
-if ($receivedPassword !== $expectedPassword) {
-    $this->writePacket($clientSocket, 2, chr(1)); // Invalid password response
-    echo "Invalid Password \n";
-} else {
-    echo "Correct Password \n";
-	 echo "sending Player Appearance Packe \n";
-// send player packet for 3 and then also player appearance packet
-	$this->sendPlayerAppearance($clientSocket, [
-    'slot' => 0,
-    'hairStyle' => 1,
-    'gender' => 1,
-    'hairColor' => ['r' => 255, 'g' => 0, 'b' => 0],
-    'skinColor' => ['r' => 255, 'g' => 224, 'b' => 189],
-    'eyeColor' => ['r' => 0, 'g' => 128, 'b' => 255],
-    'shirtColor' => ['r' => 0, 'g' => 255, 'b' => 0],
-    'undershirtColor' => ['r' => 0, 'g' => 200, 'b' => 200],
-    'pantsColor' => ['r' => 50, 'g' => 50, 'b' => 50],
-    'shoeColor' => ['r' => 80, 'g' => 40, 'b' => 0],
-    'difficulty' => 0,
-    'playerName' => 'test'
-]);
-}
+                        case 4:
+                            echo "Waiting for Player Info Packet...\n";
+                            $playerPacket = Packet::readPacket($clientSocket); // Read NEW packet
+                            if (!$playerPacket || $playerPacket["id"] !== 4) {
+                                echo "Unexpected packet received instead of Player Info!\n";
+                                return;
+                            }
+                            echo "Player Packet 4 Raw Packet DATA: \n";
+                            var_dump($playerPacket);
+                            if (!isset($playerPacket["data"])) {
+                                echo "Player packet data is missing!\n";
+                                return;
+                            }
+                            // Example: Assuming first byte is UID
+                            $uid = ord($playerPacket["data"][0]); // Extract UID
+                            $playerName = trim(
+                                substr($playerPacket["data"], 1)
+                            ); // Extract player name
+                        /* 
+$playerData = [
+    "uid" => ord($playerPacket["data"][0]), // Unique Player ID (U8)
+    "skinVariant" => ord($playerPacket["data"][1]), // Skin Variant (U8)
+    "hair" => ord($playerPacket["data"][2]), // Hair Style (U8)
+    "name" => trim(substr($playerPacket["data"], 3)), // Player Name (String)
+    "hairDye" => ord($playerPacket["data"][strlen($playerData["name"]) + 3]), // Hair Dye (U8)
+    "hideVisuals" => ord($playerPacket["data"][strlen($playerData["name"]) + 4]), // Hide Visuals (U8)
+    "hideVisuals2" => ord($playerPacket["data"][strlen($playerData["name"]) + 5]), // Hide Visuals 2 (U8)
+    "hideMisc" => ord($playerPacket["data"][strlen($playerData["name"]) + 6]), // Hide Miscellaneous (U8)
 
+    // Extract RGB Color Data
+    "hairColor" => [
+        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 7]),
+        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 8]),
+        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 9])
+    ],
+    "skinColor" => [
+        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 10]),
+        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 11]),
+        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 12])
+    ],
+    "eyeColor" => [
+        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 13]),
+        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 14]),
+        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 15])
+    ],
+    "shirtColor" => [
+        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 16]),
+        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 17]),
+        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 18])
+    ],
+    "undershirtColor" => [
+        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 19]),
+        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 20]),
+        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 21])
+    ],
+    "pantsColor" => [
+        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 22]),
+        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 23]),
+        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 24])
+    ],
+    "shoeColor" => [
+        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 25]),
+        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 26]),
+        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 27])
+    ],
 
+    "difficultyFlags" => ord($playerPacket["data"][strlen($playerData["name"]) + 28]), // Difficulty Flags (U8)
+    "flags2" => ord($playerPacket["data"][strlen($playerData["name"]) + 29]), // Additional Flags (U8)
+    "flags3" => ord($playerPacket["data"][strlen($playerData["name"]) + 30]) // More Flags (U8)
+];
+
+$this->addPlayer($clientSocket, $playerData); */
                     }
                 }
             }
         }
-    }
-	private function sendPlayerAppearance($clientSocket, array $appearanceData) {
-    $payload = '';
+    } // <== Closing bracket was missing before!
 
-    $payload .= chr($appearanceData['slot']);                  // Offset 0
-    $payload .= chr($appearanceData['hairStyle']);             // Offset 1
-    $payload .= chr($appearanceData['gender']);                // Offset 2
-    $payload .= $this->packColor($appearanceData['hairColor']);         // Offset 3
-    $payload .= $this->packColor($appearanceData['skinColor']);         // Offset 6
-    $payload .= $this->packColor($appearanceData['eyeColor']);          // Offset 9
-    $payload .= $this->packColor($appearanceData['shirtColor']);        // Offset 12
-    $payload .= $this->packColor($appearanceData['undershirtColor']);   // Offset 15
-    $payload .= $this->packColor($appearanceData['pantsColor']);        // Offset 18
-    $payload .= $this->packColor($appearanceData['shoeColor']);         // Offset 21
-    $payload .= chr($appearanceData['difficulty']);            // Offset 24
-    $payload .= $this->packString($appearanceData['playerName']);       // Offset 25+
-
-    $this->writePacket($clientSocket, 4, $payload);
-}
-
-private function packColor(array $color): string {
-    return chr($color['r']) . chr($color['g']) . chr($color['b']);
-}
-
-private function packString(string $str): string {
-    return chr(strlen($str)) . $str;
-}
-    public function kickPlayer($clientSocket) {
+    public function kickPlayer($clientSocket)
+    {
         socket_close($clientSocket);
     }
 
-    public function stopServer($serverSocket) {
+    public function stopServer($serverSocket)
+    {
         socket_close($serverSocket);
     }
 
-    public function getServerPassword(): string {
+    public function getServerPassword(): string
+    {
         return $this->serverPassword;
     }
 
-    public function setServerPassword(string $newPassword): bool {
+    public function listPlayers()
+    {
+        foreach ($this->players as $player) {
+            print_r($player->getPlayerInfo());
+        }
+    }
+
+    public function removePlayer(int $uid)
+    {
+        if (isset($this->players[$uid])) {
+            echo "Player {$this->players[$uid]->name} (UID: $uid) has left the server.\n";
+            unset($this->players[$uid]);
+        }
+    }
+
+    public function getPlayer(int $uid): ?Player
+    {
+        return $this->players[$uid] ?? null;
+    }
+
+    public function addPlayer($clientSocket, array $playerData)
+    {
+        $uid = $playerData["uid"]; // Unique Player ID
+        $this->players[$uid] = new Player(
+            $uid,
+            $playerData["skinVariant"],
+            $playerData["hair"],
+            $playerData["name"],
+            $playerData["hairDye"],
+            $playerData["hideVisuals"],
+            $playerData["hideVisuals2"],
+            $playerData["hideMisc"],
+            $playerData["hairColor"],
+            $playerData["skinColor"],
+            $playerData["eyeColor"],
+            $playerData["shirtColor"],
+            $playerData["undershirtColor"],
+            $playerData["pantsColor"],
+            $playerData["shoeColor"],
+            $playerData["difficultyFlags"],
+            $playerData["flags2"],
+            $playerData["flags3"]
+        );
+
+        echo "Player {$playerData["name"]} (UID: $uid) has joined the server.\n";
+    }
+
+    public function setServerPassword(string $newPassword): bool
+    {
         if ($newPassword === $this->serverPassword) {
-            throw new \Exception("Cannot Set Password: The given password is the same as the current password");
+            throw new \Exception(
+                "Cannot Set Password: The given password is the same as the current password"
+            );
         }
         $this->serverPassword = $newPassword;
         return true;
     }
-
-private function readPacket($client) {
-    $lengthBytes = fread($client, 2);
-    if (!$lengthBytes) {
-        echo "No data received from client!\n";
-        return null;
-    }
-
-    $length = unpack('v', $lengthBytes)[1];
-    $packet = fread($client, $length);
-
-    if (!$packet) {
-        echo "Packet read failed!\n";
-        return null;
-    }
-
-    var_dump($packet);
-
-    return [
-        'id' => ord($packet[0]),
-        'data' => substr($packet, 1)
-    ];
-}
-
-    private function writePacket($client, int $packetId, string $payload = '') {
-		/*
-		if ($bytesWritten = socket_write($client, $packetId) === false) {
-    echo "Socket write failed: " . socket_strerror(socket_last_error($client)) . PHP_EOL;
-}
-*/
-      stream_set_blocking($client,true);
-      $length = strlen($payload) + 3;
-	  $packet = pack('v',$length) . chr($packetId) . $payload;
-	  fwrite($client, $packet);
-	  echo "packet";
-	  var_dump($packet);
-	  echo "payload";
-	  var_dump($payload);
-	  
-	 echo "length";
-	 var_dump($length);
-	 fflush($client);
-}
-
 }
 ?>
-
