@@ -55,11 +55,25 @@ var_dump(bin2hex($receivedPassword), bin2hex($expectedPassword));
 
 if ($receivedPassword !== $expectedPassword) {
     $this->writePacket($clientSocket, 2, chr(1)); // Invalid password response
-    echo 'Invalid Password \n';
+    echo "Invalid Password \n";
 } else {
-    echo 'Correct Password \n';
-	 echo 'sending Continue connecting Packet: 3 \n';
+    echo "Correct Password \n";
+	 echo "sending Player Appearance Packe \n";
 // send player packet for 3 and then also player appearance packet
+	$this->sendPlayerAppearance($clientSocket, [
+    'slot' => 0,
+    'hairStyle' => 1,
+    'gender' => 1,
+    'hairColor' => ['r' => 255, 'g' => 0, 'b' => 0],
+    'skinColor' => ['r' => 255, 'g' => 224, 'b' => 189],
+    'eyeColor' => ['r' => 0, 'g' => 128, 'b' => 255],
+    'shirtColor' => ['r' => 0, 'g' => 255, 'b' => 0],
+    'undershirtColor' => ['r' => 0, 'g' => 200, 'b' => 200],
+    'pantsColor' => ['r' => 50, 'g' => 50, 'b' => 50],
+    'shoeColor' => ['r' => 80, 'g' => 40, 'b' => 0],
+    'difficulty' => 0,
+    'playerName' => 'test'
+]);
 }
 
 
@@ -68,7 +82,32 @@ if ($receivedPassword !== $expectedPassword) {
             }
         }
     }
-	
+	private function sendPlayerAppearance($clientSocket, array $appearanceData) {
+    $payload = '';
+
+    $payload .= chr($appearanceData['slot']);                  // Offset 0
+    $payload .= chr($appearanceData['hairStyle']);             // Offset 1
+    $payload .= chr($appearanceData['gender']);                // Offset 2
+    $payload .= $this->packColor($appearanceData['hairColor']);         // Offset 3
+    $payload .= $this->packColor($appearanceData['skinColor']);         // Offset 6
+    $payload .= $this->packColor($appearanceData['eyeColor']);          // Offset 9
+    $payload .= $this->packColor($appearanceData['shirtColor']);        // Offset 12
+    $payload .= $this->packColor($appearanceData['undershirtColor']);   // Offset 15
+    $payload .= $this->packColor($appearanceData['pantsColor']);        // Offset 18
+    $payload .= $this->packColor($appearanceData['shoeColor']);         // Offset 21
+    $payload .= chr($appearanceData['difficulty']);            // Offset 24
+    $payload .= $this->packString($appearanceData['playerName']);       // Offset 25+
+
+    $this->writePacket($clientSocket, 4, $payload);
+}
+
+private function packColor(array $color): string {
+    return chr($color['r']) . chr($color['g']) . chr($color['b']);
+}
+
+private function packString(string $str): string {
+    return chr(strlen($str)) . $str;
+}
     public function kickPlayer($clientSocket) {
         socket_close($clientSocket);
     }
