@@ -50,7 +50,13 @@ array(2) {
   string(43) "09        skyss0fly
 p�{ �j��B��G��'��G("
 }
-
+Cleaned packet data: '09        skyss0fly
+p�{ �j��B��G��\'��G('
+Cleaned data (hex): 303909736b79737330666c790a7002b47b20fc7f6affce42ffc747ffbd27fbbd471028
+Cleaned data length: 35
+Name length string from packet: '09'
+Name length (from packet): 9
+Player name extracted: 'skyss0fly'
 </code>
 
 # How to Install and Run TerrariZ (you will need Administrative permissions on your device):
