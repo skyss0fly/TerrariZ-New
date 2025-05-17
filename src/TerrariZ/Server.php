@@ -47,6 +47,7 @@ class Server
                             usleep(100000);
                             echo "Sending Password Packet (ID 37) to client\n";
                             Packet::writePacket($clientSocket, 37, chr(1));
+							//Packet::writePacket($clientSocket, 3,0);
 
                         case 38:
                             if (!is_resource($clientSocket)) {
@@ -88,65 +89,11 @@ class Server
                                 echo "Player packet data is missing!\n";
                                 return;
                             }
-                            // Example: Assuming first byte is UID
-                            $uid = ord($playerPacket["data"][0]); // Extract UID
-                            $playerName = trim(
-                                substr($playerPacket["data"], 1)
-                            ); // Extract player name
-                        /* 
-$playerData = [
-    "uid" => ord($playerPacket["data"][0]), // Unique Player ID (U8)
-    "skinVariant" => ord($playerPacket["data"][1]), // Skin Variant (U8)
-    "hair" => ord($playerPacket["data"][2]), // Hair Style (U8)
-    "name" => trim(substr($playerPacket["data"], 3)), // Player Name (String)
-    "hairDye" => ord($playerPacket["data"][strlen($playerData["name"]) + 3]), // Hair Dye (U8)
-    "hideVisuals" => ord($playerPacket["data"][strlen($playerData["name"]) + 4]), // Hide Visuals (U8)
-    "hideVisuals2" => ord($playerPacket["data"][strlen($playerData["name"]) + 5]), // Hide Visuals 2 (U8)
-    "hideMisc" => ord($playerPacket["data"][strlen($playerData["name"]) + 6]), // Hide Miscellaneous (U8)
-
-    // Extract RGB Color Data
-    "hairColor" => [
-        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 7]),
-        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 8]),
-        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 9])
-    ],
-    "skinColor" => [
-        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 10]),
-        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 11]),
-        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 12])
-    ],
-    "eyeColor" => [
-        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 13]),
-        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 14]),
-        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 15])
-    ],
-    "shirtColor" => [
-        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 16]),
-        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 17]),
-        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 18])
-    ],
-    "undershirtColor" => [
-        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 19]),
-        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 20]),
-        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 21])
-    ],
-    "pantsColor" => [
-        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 22]),
-        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 23]),
-        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 24])
-    ],
-    "shoeColor" => [
-        'r' => ord($playerPacket["data"][strlen($playerData["name"]) + 25]),
-        'g' => ord($playerPacket["data"][strlen($playerData["name"]) + 26]),
-        'b' => ord($playerPacket["data"][strlen($playerData["name"]) + 27])
-    ],
-
-    "difficultyFlags" => ord($playerPacket["data"][strlen($playerData["name"]) + 28]), // Difficulty Flags (U8)
-    "flags2" => ord($playerPacket["data"][strlen($playerData["name"]) + 29]), // Additional Flags (U8)
-    "flags3" => ord($playerPacket["data"][strlen($playerData["name"]) + 30]) // More Flags (U8)
-];
-
-$this->addPlayer($clientSocket, $playerData); */
+							$playerData = $this->parsePlayerPacket([
+							"id" => 4,
+							"data" => $playerPacket["data"]
+							]);
+							$this->addPlayer($clientSocket, $playerData);
                     }
                 }
             }
@@ -190,12 +137,14 @@ $this->addPlayer($clientSocket, $playerData); */
 
     public function addPlayer($clientSocket, array $playerData)
     {
+		
         $uid = $playerData["uid"]; // Unique Player ID
         $this->players[$uid] = new Player(
             $uid,
             $playerData["skinVariant"],
             $playerData["hair"],
             $playerData["name"],
+
             $playerData["hairDye"],
             $playerData["hideVisuals"],
             $playerData["hideVisuals2"],
@@ -211,9 +160,57 @@ $this->addPlayer($clientSocket, $playerData); */
             $playerData["flags2"],
             $playerData["flags3"]
         );
+		error_log("Parsed Player Name: " . $playerData["name"]);
 
         echo "Player {$playerData["name"]} (UID: $uid) has joined the server.\n";
     }
+public function parsePlayerPacket($rawPacket) {
+    // Force raw data to be a string.
+    $rawData = (string)$rawPacket["data"];
+
+    // Remove null bytes from the raw data.
+    $cleanData = str_replace("\0", "", $rawData);
+    
+    // Debug logging: log the cleaned string and hex dump for comparison.
+    error_log("Cleaned packet data: " . var_export($cleanData, true));
+    error_log("Cleaned data (hex): " . bin2hex($cleanData));
+    error_log("Cleaned data length: " . strlen($cleanData));
+    
+    // Extract the first two characters as the name length.
+    $nameLengthStr = substr($cleanData, 0, 2);
+    $nameLength = (int)$nameLengthStr;
+    error_log("Name length string from packet: " . var_export($nameLengthStr, true));
+    error_log("Name length (from packet): " . $nameLength);
+    
+    // Extract the player name, starting at offset 3 (after the two-byte length and one tab).
+    $playerName = trim(substr($cleanData, 3, $nameLength));
+    error_log("Player name extracted: '" . $playerName . "'");
+    
+    return [
+        "uid" => $rawPacket["id"],
+        "name" => $playerName,
+        "skinVariant" => 1,  // Placeholder values; update as needed.
+        "hair" => 2,
+        "hairDye" => 0,
+        "hideVisuals" => 0,
+        "hideVisuals2" => 0,
+        "hideMisc" => 0,
+        "hairColor" => "#000000",
+        "skinColor" => "#FFDAB9",
+        "eyeColor" => "#0000FF",
+        "shirtColor" => "#FF0000",
+        "undershirtColor" => "#00FF00",
+        "pantsColor" => "#000000",
+        "shoeColor" => "#FFFFFF",
+        "difficultyFlags" => 0,
+        "flags2" => 0,
+        "flags3" => 0
+    ];
+}
+
+
+
+
 
     public function setServerPassword(string $newPassword): bool
     {
