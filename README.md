@@ -57,6 +57,8 @@ Cleaned data length: 35
 Name length string from packet: '09'
 Name length (from packet): 9
 Player name extracted: 'skyss0fly'
+Parsed Player Name: skyss0fly
+Player skyss0fly (UID: 4) has joined the server.
 </code>
 
 # How to Install and Run TerrariZ (you will need Administrative permissions on your device):
