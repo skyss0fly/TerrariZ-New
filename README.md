@@ -76,4 +76,16 @@ then simply type up:
 if all goes well, you should now have TerrariZ Up and running!
 
 
+# Functionality
+
+✅ Basic protocol
+✅ MOTD
+👷 Game Protocol
+⬜ Plugins
+⬜ Permissions
+⬜ Ability to log in to the server
+⬜ Commands
+⬜ World Generation
+⬜ Mobs
+
 
