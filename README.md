@@ -1,5 +1,5 @@
 > [!NOTE]
-> This Server Software is Currently Still In Development!
+> This Server Software is Currently Still In Development! (I will be Doing More Bigger Commits so Next Commit will be Big)
 > If you struggle to understand the [Installation Instructions](https://github.com/skyss0fly/TerrariZ-New?tab=readme-ov-file#how-to-install-and-run-terrariz-you-will-need-administrative-permissions-on-your-device), simply copy the text into chatgpt and AI will walk you through the instructions at your Own Pace. 
 
 # CURRENT FEATURES IMPLEMENTED:
